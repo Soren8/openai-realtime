@@ -190,13 +190,17 @@ class RealtimeVoiceClient:
             try:
                 frame = await track.recv()
                 
-                # Log frame details if sample rate changes
-                if frame.sample_rate != last_reported_rate:
-                    logger.info(f"Received frame with sample rate: {frame.sample_rate} Hz")
-                    last_reported_rate = frame.sample_rate
+                # Always log the received frame's sample rate
+                current_rate = frame.sample_rate
+                logger.debug(f"Received frame with sample rate: {current_rate} Hz")
+                
+                # Log if sample rate changes
+                if current_rate != last_reported_rate:
+                    logger.info(f"Sample rate changed from {last_reported_rate} Hz to {current_rate} Hz")
+                    last_reported_rate = current_rate
                     
-                    if frame.sample_rate != RATE:
-                        logger.warning(f"Warning: Received audio at {frame.sample_rate} Hz but expected {RATE} Hz")
+                    if current_rate != RATE:
+                        logger.warning(f"Warning: Received audio at {current_rate} Hz but expected {RATE} Hz")
                 
                 # Convert the frame to raw audio data
                 audio_data = frame.to_ndarray()
