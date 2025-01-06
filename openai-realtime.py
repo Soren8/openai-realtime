@@ -128,50 +128,35 @@ class RealtimeVoiceClient:
         # Declare globals at the start of the method
         global RATE, CHUNK
         
-        logger.debug("Starting audio streams")
+        # Default to 44100 Hz
+        RATE = 44100
+        CHUNK = int(RATE * 0.02)  # 20ms frame size
+        
+        logger.info(f"Using sample rate: {RATE} Hz with chunk size: {CHUNK}")
+        
         try:
-            # Verify output device and test supported rates
             output_info = self.audio.get_default_output_device_info()
             logger.debug(f"Using output device: {output_info['name']}")
-            
-            # Get supported sample rates through active testing
-            supported_rates = get_supported_sample_rates(self.audio)
-            
-            # Check if 48 kHz is supported
-            if RATE not in supported_rates:
-                logger.warning(f"Output device does not support {RATE} Hz sample rate")
-                
-                # Find the closest supported sample rate
-                closest_rate = min(supported_rates, key=lambda x: abs(x - RATE))
-                logger.warning(f"Using closest supported sample rate: {closest_rate} Hz")
-                
-                # Update the global variables
-                RATE = closest_rate
-                CHUNK = int(RATE * 0.02)  # 20ms frame size based on new rate
-                
-                logger.info(f"Using sample rate: {RATE} Hz with chunk size: {CHUNK}")
             
             self.output_stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
-                rate=RATE,  # Use the closest supported rate
+                rate=RATE,
                 output=True,
-                frames_per_buffer=CHUNK,  # Adjusted based on the new rate
+                frames_per_buffer=CHUNK,
                 output_device_index=output_info['index']
             )
-            logger.debug(f"Output stream opened successfully: {self.output_stream.is_active()}")
-
+            
             self.input_stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
-                rate=RATE,  # Use the same rate for input
+                rate=RATE,
                 input=True,
-                frames_per_buffer=CHUNK  # Adjusted based on the new rate
+                frames_per_buffer=CHUNK
             )
-            logger.debug(f"Input stream opened successfully: {self.input_stream.is_active()}")
-
+            
             asyncio.create_task(self.process_input_audio())
-            logger.debug("Audio processing task started")
+            
         except Exception as e:
             logger.error(f"Error starting audio streams: {e}")
             raise
@@ -197,20 +182,42 @@ class RealtimeVoiceClient:
     async def handle_remote_track(self, track):
         logger.debug(f"Remote audio track received with format: {track.kind}, {track.readyState}")
         self.remote_audio_track = track
+        
+        # Initialize sample rate conversion variables
+        last_reported_rate = None
+        conversion_factor = 1.0
+        
         while True:
             try:
                 frame = await track.recv()
                 
-                # Log initial frame details
-                logger.debug(f"Received frame: sample_rate={frame.sample_rate}, format={frame.format.name}, samples={frame.samples}")
+                # Log frame details if sample rate changes
+                if frame.sample_rate != last_reported_rate:
+                    logger.info(f"Received frame with sample rate: {frame.sample_rate} Hz")
+                    last_reported_rate = frame.sample_rate
+                    conversion_factor = RATE / frame.sample_rate
+                    logger.info(f"Sample rate conversion factor: {conversion_factor}")
                 
                 # Convert the frame to raw audio data
                 audio_data = frame.to_ndarray()
-                logger.debug(f"Converted to numpy array: shape={audio_data.shape}, dtype={audio_data.dtype}")
                 
-                # Play the audio directly without any conversion
+                # If conversion is needed
+                if conversion_factor != 1.0:
+                    original_samples = audio_data.shape[0]
+                    target_samples = int(original_samples * conversion_factor)
+                    
+                    # Resample using numpy's interpolation
+                    x_old = np.linspace(0, 1, original_samples)
+                    x_new = np.linspace(0, 1, target_samples)
+                    audio_data = np.interp(x_new, x_old, audio_data)
+                    
+                    logger.debug(f"Resampled audio: {original_samples} -> {target_samples} samples")
+                
+                # Convert to int16 and ensure proper byte order
+                audio_data = audio_data.astype(np.int16)
+                
+                # Convert to bytes
                 raw_audio = audio_data.tobytes()
-                logger.debug(f"Audio data size in bytes: {len(raw_audio)}")
                 
                 await self.play_audio(raw_audio)
                     
