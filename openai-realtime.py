@@ -28,8 +28,8 @@ rtp_logger.setLevel(logging.WARNING)
 # Audio configuration
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 16000
-CHUNK = 1024
+RATE = 48000  # Changed from 16000 to 48000
+CHUNK = 960   # Adjusted to match 48 kHz (960 samples per 20ms frame)
 
 class RealtimeVoiceClient:
     def __init__(self, api_key):
@@ -89,9 +89,9 @@ class RealtimeVoiceClient:
             self.output_stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
-                rate=RATE,
+                rate=RATE,  # Now 48000
                 output=True,
-                frames_per_buffer=CHUNK,
+                frames_per_buffer=CHUNK,  # Now 960
                 output_device_index=output_info['index']
             )
             logger.debug(f"Output stream opened successfully: {self.output_stream.is_active()}")
@@ -99,9 +99,9 @@ class RealtimeVoiceClient:
             self.input_stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
-                rate=RATE,
+                rate=RATE,  # Now 48000
                 input=True,
-                frames_per_buffer=CHUNK
+                frames_per_buffer=CHUNK  # Now 960
             )
             logger.debug(f"Input stream opened successfully: {self.input_stream.is_active()}")
 
@@ -139,24 +139,13 @@ class RealtimeVoiceClient:
                 # Convert the frame to raw audio data
                 audio_data = frame.to_ndarray()
                 
-                # Resample from 48kHz to 16kHz
-                original_samples = len(audio_data.flatten())
-                target_samples = int(original_samples * (RATE / frame.sample_rate))
-                resampled_data = np.interp(
-                    np.linspace(0, original_samples - 1, target_samples),
-                    np.arange(original_samples),
-                    audio_data.flatten()
-                )
-                
-                # Convert to int16
-                resampled_data = (resampled_data * 32767).astype(np.int16)
-                
-                max_amplitude = np.max(np.abs(resampled_data))
+                # Log the max amplitude of the received audio
+                max_amplitude = np.max(np.abs(audio_data))
                 if max_amplitude > 100:  # Only log when there's significant audio
-                    logger.debug(f"Resampled audio max amplitude: {max_amplitude}")
+                    logger.debug(f"Remote audio max amplitude: {max_amplitude}")
                 
                 if max_amplitude > 1:
-                    await self.play_audio(resampled_data.tobytes())
+                    await self.play_audio(audio_data.tobytes())
             except Exception as e:
                 logger.error(f"Error handling remote track: {e}")
                 break
@@ -298,9 +287,9 @@ class AudioTrack(MediaStreamTrack):
         self.client = client
         self.audio_buffer = asyncio.Queue()
         logger.debug("AudioTrack initialized")
-        self.sample_rate = RATE
+        self.sample_rate = RATE  # Now 48000
         self.channels = CHANNELS
-        self.samples_per_channel = CHUNK
+        self.samples_per_channel = CHUNK  # Now 960
         self.timestamp = 0  # Initialize timestamp counter
 
     async def recv(self):
