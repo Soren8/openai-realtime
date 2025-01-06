@@ -170,16 +170,16 @@ class AudioTrack(MediaStreamTrack):
     async def recv(self):
         try:
             frame = await self.audio_buffer.get()
-            logger.debug(f"Received {len(frame)} bytes of audio data")
-            await self.client.play_audio(frame)
             
-            # Convert raw bytes to AudioFrame
-            audio_frame = AudioFrame(format='s16', layout='mono', samples=self.samples_per_channel)
-            audio_frame.planes[0].update(frame)
-            audio_frame.sample_rate = self.sample_rate
-            audio_frame.time_base = '1/{}'.format(self.sample_rate)
+            # Get the actual audio data from the frame
+            audio_data = frame.planes[0].to_bytes()
+            logger.debug(f"Received {len(audio_data)} bytes of audio data")
             
-            return audio_frame
+            # Play the audio through the output stream
+            await self.client.play_audio(audio_data)
+            
+            # Return the frame for WebRTC processing
+            return frame
         except Exception as e:
             logger.error(f"Error in recv: {e}")
             raise
