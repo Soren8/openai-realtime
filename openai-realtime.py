@@ -29,7 +29,7 @@ rtp_logger.setLevel(logging.WARNING)
 # Audio configuration
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 16000  # Changed to 16kHz
+RATE = 24000  # Changed to 24kHz
 CHUNK = 320   # 20ms frame size at 16kHz
 
 def get_supported_sample_rates(audio):
@@ -131,9 +131,9 @@ class RealtimeVoiceClient:
         
         # Use 16kHz
         RATE = 16000
-        CHUNK = int(RATE * 0.02)  # 20ms frame size (320 samples)
+        CHUNK = int(RATE * 0.02)  # 20ms frame size (480 samples)
         
-        logger.info(f"Using sample rate: {RATE} Hz with chunk size: {CHUNK}")
+        logger.info(f"Using sample rate: {RATE} Hz with chunk size: {CHUNK} (24kHz)")
         
         try:
             output_info = self.audio.get_default_output_device_info()
@@ -187,7 +187,7 @@ class RealtimeVoiceClient:
         wave_out = wave.open("debug_output.wav", "wb")
         wave_out.setnchannels(1)
         wave_out.setsampwidth(2)  # 16-bit
-        wave_out.setframerate(16000)  # Changed to 16kHz
+        wave_out.setframerate(24000)  # Changed to 24kHz
 
         # Initialize sample rate conversion variables
         last_reported_rate = None
