@@ -58,13 +58,12 @@ class RealtimeVoiceClient:
                 wf.writeframes(audio_data.tobytes())
                 
             with open('temp.wav', 'rb') as audio_file:
-                response = openai.Audio.transcribe(
-                    model="whisper-1",
+                response = self.client.audio.transcriptions.create(
                     file=audio_file,
-                    voice="4o-mini-advanced"
+                    model="whisper-1"  # Use Whisper for transcription
                 )
             os.remove('temp.wav')
-            return response['text']
+            return response.text  # Return the transcribed text
         except Exception as e:
             print(f"Error processing audio: {e}")
             return None
