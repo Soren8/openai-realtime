@@ -192,9 +192,9 @@ if __name__ == "__main__":
                 logger.error("OPENAI_API_KEY not found in .env file")
                 raise ValueError("Please create a .env file with OPENAI_API_KEY")
             
-        client = RealtimeVoiceClient(api_key)
-        try:
-            await client.connect()
+            client = RealtimeVoiceClient(api_key)
+            try:
+                await client.connect()
             
             # Keep the connection alive while processing audio
             while True:
