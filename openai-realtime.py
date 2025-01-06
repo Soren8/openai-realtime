@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-import openai
+from openai import OpenAI  # Updated import
 import sounddevice as sd
 import numpy as np
 import wave
@@ -9,8 +9,7 @@ import queue
 
 class RealtimeVoiceClient:
     def __init__(self, api_key):
-        self.api_key = api_key
-        openai.api_key = self.api_key
+        self.client = OpenAI(api_key=api_key)  # Updated initialization
         self.audio_queue = queue.Queue()
         self.is_recording = False
         self.sample_rate = 16000
