@@ -163,13 +163,28 @@ class RealtimeVoiceClient:
                 # Log the sample rate of the incoming frame
                 logger.debug(f"Received frame with sample rate: {frame.sample_rate}")
                 
-                # Ensure the frame is at the correct sample rate (48 kHz)
-                if frame.sample_rate != RATE:
-                    logger.warning(f"Received frame with unexpected sample rate: {frame.sample_rate}")
-                    continue  # Skip frames with incorrect sample rate
-                
                 # Convert the frame to raw audio data
                 audio_data = frame.to_ndarray()
+                
+                # Ensure the data is in the correct format (int16)
+                if audio_data.dtype != np.int16:
+                    audio_data = (audio_data * 32767).astype(np.int16)
+                
+                # Ensure we're handling mono audio correctly
+                if len(audio_data.shape) > 1 and audio_data.shape[1] > 1:
+                    audio_data = audio_data[:, 0]  # Take only the first channel if stereo
+                
+                # Resample if necessary
+                if frame.sample_rate != RATE:
+                    logger.debug(f"Resampling from {frame.sample_rate} to {RATE}")
+                    # Calculate resampling ratio
+                    ratio = RATE / frame.sample_rate
+                    new_length = int(len(audio_data) * ratio)
+                    audio_data = np.interp(
+                        np.linspace(0, len(audio_data)-1, new_length),
+                        np.arange(len(audio_data)),
+                        audio_data
+                    ).astype(np.int16)
                 
                 # Log the max amplitude of the received audio
                 max_amplitude = np.max(np.abs(audio_data))
@@ -178,6 +193,7 @@ class RealtimeVoiceClient:
                 
                 if max_amplitude > 1:
                     await self.play_audio(audio_data.tobytes())
+                    
             except Exception as e:
                 logger.error(f"Error handling remote track: {e}")
                 break
