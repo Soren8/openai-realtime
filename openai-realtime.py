@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import aiohttp
 import asyncio
+from av import AudioFrame
 
 # Configure logging
 logging.basicConfig(
@@ -162,20 +163,36 @@ class AudioTrack(MediaStreamTrack):
         self.client = client
         self.audio_buffer = asyncio.Queue()
         logger.debug("AudioTrack initialized")
+        self.sample_rate = RATE
+        self.channels = CHANNELS
+        self.samples_per_channel = CHUNK
 
     async def recv(self):
         try:
             frame = await self.audio_buffer.get()
             logger.debug(f"Received {len(frame)} bytes of audio data")
             await self.client.play_audio(frame)
-            return frame
+            
+            # Convert raw bytes to AudioFrame
+            audio_frame = AudioFrame(format='s16', layout='mono', samples=self.samples_per_channel)
+            audio_frame.planes[0].update(frame)
+            audio_frame.sample_rate = self.sample_rate
+            audio_frame.time_base = '1/{}'.format(self.sample_rate)
+            
+            return audio_frame
         except Exception as e:
             logger.error(f"Error in recv: {e}")
             raise
 
     async def send_audio(self, audio_data):
         try:
-            await self.audio_buffer.put(audio_data)
+            # Convert raw bytes to AudioFrame
+            audio_frame = AudioFrame(format='s16', layout='mono', samples=self.samples_per_channel)
+            audio_frame.planes[0].update(audio_data)
+            audio_frame.sample_rate = self.sample_rate
+            audio_frame.time_base = '1/{}'.format(self.sample_rate)
+            
+            await self.audio_buffer.put(audio_frame)
             logger.debug(f"Sent {len(audio_data)} bytes to audio buffer")
         except Exception as e:
             logger.error(f"Error in send_audio: {e}")
