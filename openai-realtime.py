@@ -11,6 +11,10 @@ class RealtimeVoiceClient:
         self.pc = RTCPeerConnection()
         self.data_channel = None
         self.audio_stream = None
+
+    def _handle_message(self, message):
+        # Handle incoming messages
+        print("Received:", message)
         
     async def connect(self):
         # Create ephemeral token
@@ -64,10 +68,6 @@ class AudioTrack(MediaStreamTrack):
     async def recv(self):
         # Implement audio frame reception
         pass
-
-    def _handle_message(self, message):
-        # Handle incoming messages
-        print("Received:", message)
 
     async def send_message(self, text):
         message = {
