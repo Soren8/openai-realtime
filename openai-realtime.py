@@ -34,6 +34,7 @@ class RealtimeVoiceClient:
         self.input_stream = None
         self.output_stream = None
         self.audio_track = None
+        self.remote_audio_track = None
         self.audio_queue = asyncio.Queue()
 
     def _handle_message(self, message):
@@ -79,6 +80,18 @@ class RealtimeVoiceClient:
                 await asyncio.sleep(0.01)
             except Exception as e:
                 logger.error(f"Error in input audio processing: {e}")
+                break
+
+    async def handle_remote_track(self, track):
+        logger.debug("Remote audio track received")
+        self.remote_audio_track = track
+        while True:
+            try:
+                frame = await track.recv()
+                audio_data = frame.planes[0].to_bytes()
+                await self.play_audio(audio_data)
+            except Exception as e:
+                logger.error(f"Error handling remote track: {e}")
                 break
 
     async def process_output_audio(self):
@@ -134,6 +147,13 @@ class RealtimeVoiceClient:
         self.audio_track = AudioTrack(self)
         self.pc.addTrack(self.audio_track)
 
+        # Set up track handler
+        @self.pc.on("track")
+        def on_track(track):
+            logger.debug(f"Track received: {track.kind}")
+            if track.kind == "audio":
+                asyncio.create_task(self.handle_remote_track(track))
+
         # Set up data channel
         self.data_channel = self.pc.createDataChannel("oai-events")
         self.data_channel.on("message", self._handle_message)
@@ -171,15 +191,6 @@ class AudioTrack(MediaStreamTrack):
     async def recv(self):
         try:
             frame = await self.audio_buffer.get()
-            
-            # Get the actual audio data from the frame
-            audio_data = frame.planes[0].to_bytes()
-            logger.debug(f"Received {len(audio_data)} bytes of audio data")
-            
-            # Play the audio through the output stream
-            await self.client.play_audio(audio_data)
-            
-            # Return the frame for WebRTC processing
             return frame
         except Exception as e:
             logger.error(f"Error in recv: {e}")
