@@ -28,8 +28,53 @@ rtp_logger.setLevel(logging.WARNING)
 # Audio configuration
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 48000  # Default rate, may be adjusted based on device support
+RATE = 48000  # Default rate, will be adjusted based on device support
 CHUNK = 960   # Default for 48kHz, will be adjusted based on actual rate
+
+def get_supported_sample_rates(audio):
+    """Test a wide range of sample rates to find supported ones"""
+    try:
+        # Get default output device info
+        default_output = audio.get_default_output_device_info()
+        device_index = default_output['index']
+        device_name = default_output['name']
+        
+        logger.debug(f"Testing output device: {device_name} (index {device_index})")
+        
+        # Expanded list of sample rates to test
+        test_rates = [
+            8000, 11025, 12000, 16000, 22050, 
+            24000, 32000, 44100, 48000, 
+            88200, 96000, 176400, 192000
+        ]
+        
+        supported_rates = []
+        
+        # Test each sample rate
+        for rate in test_rates:
+            try:
+                # Try opening a stream with this rate
+                stream = audio.open(
+                    format=FORMAT,
+                    channels=CHANNELS,
+                    rate=rate,
+                    output=True,
+                    frames_per_buffer=1024,
+                    output_device_index=device_index
+                )
+                stream.close()
+                supported_rates.append(rate)
+                logger.debug(f"Sample rate {rate} Hz - Supported")
+            except Exception as e:
+                logger.debug(f"Sample rate {rate} Hz - Not supported ({str(e)})")
+                
+        logger.info(f"Supported sample rates: {supported_rates}")
+        return supported_rates
+        
+    except Exception as e:
+        logger.error(f"Error testing sample rates: {e}")
+        # Fallback to common rates if testing fails
+        return [44100, 48000, 16000]
 
 class RealtimeVoiceClient:
     def __init__(self, api_key):
@@ -85,18 +130,12 @@ class RealtimeVoiceClient:
         
         logger.debug("Starting audio streams")
         try:
-            # Verify output device
+            # Verify output device and test supported rates
             output_info = self.audio.get_default_output_device_info()
             logger.debug(f"Using output device: {output_info['name']}")
             
-            # Get supported sample rates
-            supported_rates = output_info.get('supportedSampleRates', [])
-            logger.debug(f"Supported sample rates: {supported_rates}")
-            
-            # If no supported rates are reported, use a default list
-            if not supported_rates:
-                logger.warning("No supported sample rates reported by device. Using default rates.")
-                supported_rates = [44100, 48000, 16000]  # Common sample rates
+            # Get supported sample rates through active testing
+            supported_rates = get_supported_sample_rates(self.audio)
             
             # Check if 48 kHz is supported
             if RATE not in supported_rates:
@@ -109,6 +148,8 @@ class RealtimeVoiceClient:
                 # Update the global variables
                 RATE = closest_rate
                 CHUNK = int(RATE * 0.02)  # 20ms frame size based on new rate
+                
+                logger.info(f"Using sample rate: {RATE} Hz with chunk size: {CHUNK}")
             
             self.output_stream = self.audio.open(
                 format=FORMAT,
