@@ -166,6 +166,7 @@ class AudioTrack(MediaStreamTrack):
         self.sample_rate = RATE
         self.channels = CHANNELS
         self.samples_per_channel = CHUNK
+        self.timestamp = 0  # Initialize timestamp counter
 
     async def recv(self):
         try:
@@ -191,6 +192,10 @@ class AudioTrack(MediaStreamTrack):
             audio_frame.planes[0].update(audio_data)
             audio_frame.sample_rate = self.sample_rate
             audio_frame.time_base = '1/{}'.format(self.sample_rate)
+            
+            # Set the timestamp and increment
+            audio_frame.pts = self.timestamp
+            self.timestamp += self.samples_per_channel
             
             await self.audio_buffer.put(audio_frame)
             logger.debug(f"Sent {len(audio_data)} bytes to audio buffer")
