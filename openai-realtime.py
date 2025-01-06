@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 import openai
 import sounddevice as sd
 import numpy as np
@@ -70,10 +71,12 @@ class RealtimeVoiceClient:
             return None
 
 if __name__ == "__main__":
-    # Get API key from environment variable
+    # Load environment variables from .env file
+    load_dotenv()
+    
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("Please set OPENAI_API_KEY environment variable")
+        raise ValueError("Please create a .env file with OPENAI_API_KEY")
         
     client = RealtimeVoiceClient(api_key)
     
