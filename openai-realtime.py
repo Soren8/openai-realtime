@@ -189,7 +189,12 @@ class RealtimeVoiceClient:
         while True:
             try:
                 frame = await track.recv()
-                
+            
+                # Add detailed frame information logging
+                logger.debug(f"frame.samples = {frame.samples}")
+                logger.debug(f"frame.sample_rate = {frame.sample_rate}")
+                logger.debug(f"frame.channels = {frame.layout.channels}")
+            
                 # Always log the received frame's sample rate
                 current_rate = frame.sample_rate
                 logger.debug(f"Received frame with sample rate: {current_rate} Hz")
