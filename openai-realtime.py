@@ -2,7 +2,6 @@ import os
 import json
 import logging
 import pyaudio
-import numpy as np
 from dotenv import load_dotenv
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import aiohttp
@@ -120,18 +119,6 @@ class RealtimeVoiceClient:
             logger.error(f"Error in play_audio: {e}")
             raise
 
-    async def test_output(self):
-        """Play a test tone to verify output works"""
-        try:
-            logger.debug("Playing test tone")
-            duration = 1.0  # seconds
-            frequency = 440.0  # Hz (A4 note)
-            samples = (np.sin(2 * np.pi * np.arange(RATE * duration) * frequency / RATE)).astype(np.float32)
-            self.output_stream.write(samples.tobytes())
-            logger.debug("Test tone completed")
-        except Exception as e:
-            logger.error(f"Error playing test tone: {e}")
-            raise
 
     async def send_message(self, text):
         if not self.data_channel:
@@ -249,7 +236,6 @@ if __name__ == "__main__":
             client = RealtimeVoiceClient(api_key)
             try:
                 await client.start_audio_streams()
-                await client.test_output()  # Add this line
                 await client.connect()
                 
                 # Keep the connection alive while processing audio
