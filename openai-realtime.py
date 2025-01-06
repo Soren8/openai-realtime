@@ -368,9 +368,9 @@ class AudioTrack(MediaStreamTrack):
         self.client = client
         self.audio_buffer = asyncio.Queue()
         logger.debug("AudioTrack initialized")
-        self.sample_rate = 16000  # Changed to 16kHz
+        self.sample_rate = 24000  # Changed to 24kHz
         self.channels = CHANNELS
-        self.samples_per_channel = int(self.sample_rate * 0.02)  # 20ms frame size (320 samples)
+        self.samples_per_channel = int(self.sample_rate * 0.02)  # 20ms frame size (480 samples)
         self.timestamp = 0  # Initialize timestamp counter
 
     async def recv(self):
