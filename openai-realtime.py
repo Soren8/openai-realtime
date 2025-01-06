@@ -43,7 +43,6 @@ class RealtimeVoiceClient:
         self.output_stream = None
         self.audio_track = None
         self.remote_audio_track = None
-        self.audio_queue = asyncio.Queue()
 
     def _handle_message(self, message):
         # Handle incoming messages
@@ -76,8 +75,7 @@ class RealtimeVoiceClient:
             logger.debug(f"Input stream opened successfully: {self.input_stream.is_active()}")
 
             asyncio.create_task(self.process_input_audio())
-            asyncio.create_task(self.process_output_audio())
-            logger.debug("Audio processing tasks started")
+            logger.debug("Audio processing task started")
         except Exception as e:
             logger.error(f"Error starting audio streams: {e}")
             raise
@@ -100,30 +98,24 @@ class RealtimeVoiceClient:
         while True:
             try:
                 frame = await track.recv()
-                audio_data = frame.planes[0].to_bytes()
+                # Convert the frame to raw audio data
+                audio_data = frame.to_ndarray().tobytes()
+                logger.debug(f"Received audio frame: {len(audio_data)} bytes")
                 await self.play_audio(audio_data)
             except Exception as e:
                 logger.error(f"Error handling remote track: {e}")
                 break
 
-    async def process_output_audio(self):
-        logger.debug("Starting output audio processing")
-        while True:
-            try:
-                if not self.audio_queue.empty():
-                    audio_data = await self.audio_queue.get()
-                    self.output_stream.write(audio_data)
-                await asyncio.sleep(0.01)
-            except Exception as e:
-                logger.error(f"Error in output audio processing: {e}")
-                break
 
     async def play_audio(self, audio_data):
         """Add audio data to the output queue"""
         try:
-            # Add debug logging to verify audio data
-            logger.debug(f"Audio data received: {len(audio_data)} bytes, first 10 bytes: {audio_data[:10].hex()}")
-            await self.audio_queue.put(audio_data)
+            # Verify we have valid audio data
+            if len(audio_data) > 0:
+                logger.debug(f"Playing audio: {len(audio_data)} bytes")
+                self.output_stream.write(audio_data)
+            else:
+                logger.warning("Received empty audio data")
         except Exception as e:
             logger.error(f"Error in play_audio: {e}")
             raise
