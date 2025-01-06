@@ -95,7 +95,7 @@ class RealtimeVoiceClient:
         await self.start_audio_streams()
 
         # Add audio track
-        self.audio_track = AudioTrack()
+        self.audio_track = AudioTrack(self)
         self.pc.addTrack(self.audio_track)
 
         # Set up data channel
@@ -122,14 +122,15 @@ class RealtimeVoiceClient:
 class AudioTrack(MediaStreamTrack):
     kind = "audio"
 
-    def __init__(self):
+    def __init__(self, client):
         super().__init__()
+        self.client = client
         self.audio_buffer = asyncio.Queue()
 
     async def recv(self):
         # Get audio frames from the buffer and play them
         frame = await self.audio_buffer.get()
-        asyncio.create_task(client.play_audio(frame))
+        asyncio.create_task(self.client.play_audio(frame))
         return frame
 
     async def send_audio(self, audio_data):
