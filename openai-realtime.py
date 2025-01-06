@@ -16,6 +16,18 @@ class RealtimeVoiceClient:
         # Handle incoming messages
         print("Received:", message)
         
+    async def send_message(self, text):
+        if not self.data_channel:
+            raise RuntimeError("Data channel not initialized")
+            
+        message = {
+            "type": "response.create",
+            "response": {
+                "modalities": ["text"],
+                "instructions": text
+            }
+        }
+        self.data_channel.send(json.dumps(message))
     async def connect(self):
         # Create ephemeral token
         async with aiohttp.ClientSession() as session:
@@ -69,15 +81,6 @@ class AudioTrack(MediaStreamTrack):
         # Implement audio frame reception
         pass
 
-    async def send_message(self, text):
-        message = {
-            "type": "response.create",
-            "response": {
-                "modalities": ["text"],
-                "instructions": text
-            }
-        }
-        self.data_channel.send(json.dumps(message))
 
 if __name__ == "__main__":
     async def main():
