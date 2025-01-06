@@ -80,15 +80,25 @@ if __name__ == "__main__":
         
     client = RealtimeVoiceClient(api_key)
     
-    print("Starting recording... (Press Enter to stop)")
-    client.start_recording()
-    input()  # Wait for Enter key
-    client.stop_recording()
-    
-    print("Processing audio...")
-    result = client.process_audio()
-    if result:
-        print("\nTranscription Result:")
-        print(result)
-    else:
-        print("No transcription available")
+    try:
+        print("Starting recording... (Press Ctrl+C to stop)")
+        client.start_recording()
+        while True:
+            try:
+                input()  # Wait for Enter key
+                break
+            except KeyboardInterrupt:
+                print("\nStopping recording...")
+                break
+    except Exception as e:
+        print(f"\nError: {e}")
+    finally:
+        client.stop_recording()
+        
+        print("Processing audio...")
+        result = client.process_audio()
+        if result:
+            print("\nTranscription Result:")
+            print(result)
+        else:
+            print("No transcription available")
