@@ -213,4 +213,4 @@ if __name__ == "__main__":
                 client.audio.terminate()
                 logger.info("Resources cleaned up successfully")
             
-    asyncio.run(main())
+        asyncio.run(main())
