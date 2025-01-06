@@ -33,11 +33,15 @@ class RealtimeVoiceClient:
                 token_data = await resp.json()
                 ephemeral_key = token_data['client_secret']['value']
 
-        # Set up data channel FIRST
+        # Add audio track FIRST
+        audio_track = AudioTrack()
+        self.pc.addTrack(audio_track)
+
+        # Set up data channel
         self.data_channel = self.pc.createDataChannel("oai-events")
         self.data_channel.on("message", self._handle_message)
 
-        # Now create the offer
+        # Create offer
         offer = await self.pc.createOffer()
         await self.pc.setLocalDescription(offer)
 
@@ -53,10 +57,6 @@ class RealtimeVoiceClient:
                 answer_sdp = await resp.text()
                 answer = RTCSessionDescription(sdp=answer_sdp, type="answer")
                 await self.pc.setRemoteDescription(answer)
-
-        # Add audio track
-        audio_track = AudioTrack()
-        self.pc.addTrack(audio_track)
 
 class AudioTrack(MediaStreamTrack):
     kind = "audio"
