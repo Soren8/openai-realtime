@@ -270,7 +270,8 @@ class RealtimeVoiceClient:
                     },
                     data=offer.sdp
                 ) as resp:
-                    if resp.status != 200:
+                    # Handle both 200 and 201 status codes
+                    if resp.status not in (200, 201):
                         error_text = await resp.text()
                         logger.error(f"Failed to get answer: {error_text}")
                         raise RuntimeError(f"Failed to get answer: {resp.status}")
@@ -353,6 +354,9 @@ if __name__ == "__main__":
                 
         except Exception as e:
             logger.error(f"Application error: {e}")
+            # Add more detailed error information
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                logger.error(f"Response content: {await e.response.text()}")
             raise
         finally:
             if client:
