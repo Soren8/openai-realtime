@@ -80,6 +80,9 @@ class RealtimeVoiceClient:
             logger.error(f"Error handling message: {e}")
 
     async def start_audio_streams(self):
+        # Declare globals at the start of the method
+        global RATE, CHUNK
+        
         logger.debug("Starting audio streams")
         try:
             # Verify output device
@@ -98,10 +101,8 @@ class RealtimeVoiceClient:
                 closest_rate = min(supported_rates, key=lambda x: abs(x - RATE))
                 logger.warning(f"Using closest supported sample rate: {closest_rate} Hz")
                 
-                # Update the global RATE variable
-                global RATE
+                # Update the global variables
                 RATE = closest_rate
-                global CHUNK
                 CHUNK = int(RATE * 0.02)  # 20ms frame size based on new rate
             
             self.output_stream = self.audio.open(
