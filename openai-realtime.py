@@ -28,8 +28,8 @@ rtp_logger.setLevel(logging.WARNING)
 # Audio configuration
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 48000  # Changed from 16000 to 48000
-CHUNK = 960   # Adjusted to match 48 kHz (960 samples per 20ms frame)
+RATE = 48000  # Default rate, may be adjusted based on device support
+CHUNK = 960   # Default for 48kHz, will be adjusted based on actual rate
 
 class RealtimeVoiceClient:
     def __init__(self, api_key):
@@ -86,17 +86,30 @@ class RealtimeVoiceClient:
             output_info = self.audio.get_default_output_device_info()
             logger.debug(f"Using output device: {output_info['name']}")
             
-            # Ensure the output device supports 48 kHz
-            if RATE not in output_info.get('supportedSampleRates', []):
-                logger.error(f"Output device does not support {RATE} Hz sample rate")
-                raise RuntimeError(f"Output device does not support {RATE} Hz sample rate")
+            # Get supported sample rates
+            supported_rates = output_info.get('supportedSampleRates', [])
+            logger.debug(f"Supported sample rates: {supported_rates}")
+            
+            # Check if 48 kHz is supported
+            if RATE not in supported_rates:
+                logger.warning(f"Output device does not support {RATE} Hz sample rate")
+                
+                # Find the closest supported sample rate
+                closest_rate = min(supported_rates, key=lambda x: abs(x - RATE))
+                logger.warning(f"Using closest supported sample rate: {closest_rate} Hz")
+                
+                # Update the global RATE variable
+                global RATE
+                RATE = closest_rate
+                global CHUNK
+                CHUNK = int(RATE * 0.02)  # 20ms frame size based on new rate
             
             self.output_stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
-                rate=RATE,  # Explicitly set to 48 kHz
+                rate=RATE,  # Use the closest supported rate
                 output=True,
-                frames_per_buffer=CHUNK,  # Now 960
+                frames_per_buffer=CHUNK,  # Adjusted based on the new rate
                 output_device_index=output_info['index']
             )
             logger.debug(f"Output stream opened successfully: {self.output_stream.is_active()}")
@@ -104,9 +117,9 @@ class RealtimeVoiceClient:
             self.input_stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
-                rate=RATE,  # Now 48000
+                rate=RATE,  # Use the same rate for input
                 input=True,
-                frames_per_buffer=CHUNK  # Now 960
+                frames_per_buffer=CHUNK  # Adjusted based on the new rate
             )
             logger.debug(f"Input stream opened successfully: {self.input_stream.is_active()}")
 
