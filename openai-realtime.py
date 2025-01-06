@@ -121,16 +121,23 @@ class RealtimeVoiceClient:
         while True:
             try:
                 frame = await track.recv()
+                # Log frame details
+                logger.debug(f"Received frame: format={frame.format.name}, "
+                            f"samples={frame.samples}, "
+                            f"sample_rate={frame.sample_rate}, "
+                            f"time_base={frame.time_base}")
+                
                 # Convert the frame to raw audio data
-                audio_data = frame.to_ndarray().tobytes()
-                # Add debug logging to check actual audio values
-                audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                audio_data = frame.to_ndarray()
+                logger.debug(f"Audio array shape: {audio_data.shape}, dtype: {audio_data.dtype}")
+                
+                audio_bytes = audio_data.tobytes()
+                audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
                 max_amplitude = np.max(np.abs(audio_array))
                 logger.debug(f"Audio max amplitude: {max_amplitude}")
                 
-                if len(audio_data) > 0 and max_amplitude > 1:
-                    logger.debug(f"Received audio frame: {len(audio_data)} bytes")
-                    await self.play_audio(audio_data)
+                if len(audio_bytes) > 0 and max_amplitude > 1:
+                    await self.play_audio(audio_bytes)
             except Exception as e:
                 logger.error(f"Error handling remote track: {e}")
                 break
@@ -205,12 +212,14 @@ class RealtimeVoiceClient:
         def on_open():
             logger.info("Data channel opened - sending test message")
             # Send a test message to verify the connection
-            self.data_channel.send(json.dumps({
+            test_message = {
                 "type": "session.update",
                 "session": {
                     "modalities": ["audio", "text"]
                 }
-            }))
+            }
+            logger.debug(f"Sending message: {test_message}")
+            self.data_channel.send(json.dumps(test_message))
             
         @self.data_channel.on("close")
         def on_close():
@@ -265,6 +274,11 @@ class AudioTrack(MediaStreamTrack):
             audio_frame.planes[0].update(audio_data)
             audio_frame.sample_rate = self.sample_rate
             audio_frame.time_base = '1/{}'.format(self.sample_rate)
+            
+            # Log frame details before sending
+            logger.debug(f"Sending audio frame: format={audio_frame.format.name}, "
+                        f"samples={audio_frame.samples}, "
+                        f"sample_rate={audio_frame.sample_rate}")
             
             # Set the timestamp and increment
             audio_frame.pts = self.timestamp
