@@ -23,6 +23,7 @@ class RealtimeVoiceClient:
         self.input_stream = None
         self.output_stream = None
         self.audio_track = None
+        self.audio_queue = asyncio.Queue()
 
     def _handle_message(self, message):
         # Handle incoming messages
@@ -35,8 +36,7 @@ class RealtimeVoiceClient:
             channels=CHANNELS,
             rate=RATE,
             input=True,
-            frames_per_buffer=CHUNK,
-            stream_callback=self.input_callback
+            frames_per_buffer=CHUNK
         )
 
         # Initialize output stream (speaker)
@@ -48,19 +48,29 @@ class RealtimeVoiceClient:
             frames_per_buffer=CHUNK
         )
 
-    def input_callback(self, in_data, frame_count, time_info, status):
-        # Send audio data to the server
-        if self.audio_track:
-            asyncio.run_coroutine_threadsafe(
-                self.audio_track.send_audio(in_data),
-                asyncio.get_event_loop()
-            )
-        return (in_data, pyaudio.paContinue)
+        # Start audio processing tasks
+        asyncio.create_task(self.process_input_audio())
+        asyncio.create_task(self.process_output_audio())
+
+    async def process_input_audio(self):
+        while True:
+            # Read audio from microphone
+            data = self.input_stream.read(CHUNK, exception_on_overflow=False)
+            if self.audio_track:
+                await self.audio_track.send_audio(data)
+            await asyncio.sleep(0.01)  # Small delay to prevent CPU overload
+
+    async def process_output_audio(self):
+        while True:
+            # Play audio from queue
+            if not self.audio_queue.empty():
+                audio_data = await self.audio_queue.get()
+                self.output_stream.write(audio_data)
+            await asyncio.sleep(0.01)  # Small delay to prevent CPU overload
 
     async def play_audio(self, audio_data):
-        # Play received audio data
-        if self.output_stream:
-            self.output_stream.write(audio_data)
+        # Add audio data to the output queue
+        await self.audio_queue.put(audio_data)
         
     async def send_message(self, text):
         if not self.data_channel:
@@ -130,7 +140,7 @@ class AudioTrack(MediaStreamTrack):
     async def recv(self):
         # Get audio frames from the buffer and play them
         frame = await self.audio_buffer.get()
-        asyncio.create_task(self.client.play_audio(frame))
+        await self.client.play_audio(frame)
         return frame
 
     async def send_audio(self, audio_data):
