@@ -1,11 +1,20 @@
 import os
 import json
+import logging
 import pyaudio
 import numpy as np
 from dotenv import load_dotenv
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import aiohttp
 import asyncio
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
 # Audio configuration
 FORMAT = pyaudio.paInt16
@@ -15,6 +24,7 @@ CHUNK = 1024
 
 class RealtimeVoiceClient:
     def __init__(self, api_key):
+        logger.debug("Initializing RealtimeVoiceClient")
         self.api_key = api_key
         self.pc = RTCPeerConnection()
         self.data_channel = None
@@ -30,43 +40,58 @@ class RealtimeVoiceClient:
         print("Received:", message)
 
     async def start_audio_streams(self):
-        # Initialize input stream (microphone)
-        self.input_stream = self.audio.open(
+        logger.debug("Starting audio streams")
+        try:
+            self.input_stream = self.audio.open(
             format=FORMAT,
             channels=CHANNELS,
             rate=RATE,
             input=True,
             frames_per_buffer=CHUNK
-        )
+            )
+            logger.debug("Input stream opened successfully")
 
-        # Initialize output stream (speaker)
-        self.output_stream = self.audio.open(
+            self.output_stream = self.audio.open(
             format=FORMAT,
             channels=CHANNELS,
             rate=RATE,
             output=True,
             frames_per_buffer=CHUNK
-        )
+            )
+            logger.debug("Output stream opened successfully")
 
-        # Start audio processing tasks
-        asyncio.create_task(self.process_input_audio())
-        asyncio.create_task(self.process_output_audio())
+            asyncio.create_task(self.process_input_audio())
+            asyncio.create_task(self.process_output_audio())
+            logger.debug("Audio processing tasks started")
+        except Exception as e:
+            logger.error(f"Error starting audio streams: {e}")
+            raise
 
     async def process_input_audio(self):
+        logger.debug("Starting input audio processing")
         while True:
-            # Read audio from microphone
-            data = self.input_stream.read(CHUNK, exception_on_overflow=False)
-            if self.audio_track:
-                await self.audio_track.send_audio(data)
-            await asyncio.sleep(0.01)  # Small delay to prevent CPU overload
+            try:
+                data = self.input_stream.read(CHUNK, exception_on_overflow=False)
+                if self.audio_track:
+                    logger.debug(f"Sending {len(data)} bytes of audio data")
+                    await self.audio_track.send_audio(data)
+                await asyncio.sleep(0.01)
+            except Exception as e:
+                logger.error(f"Error in input audio processing: {e}")
+                break
 
     async def process_output_audio(self):
+        logger.debug("Starting output audio processing")
         while True:
-            # Play audio from queue
-            if not self.audio_queue.empty():
-                audio_data = await self.audio_queue.get()
-                self.output_stream.write(audio_data)
-            await asyncio.sleep(0.01)  # Small delay to prevent CPU overload
+            try:
+                if not self.audio_queue.empty():
+                    audio_data = await self.audio_queue.get()
+                    logger.debug(f"Playing {len(audio_data)} bytes of audio data")
+                    self.output_stream.write(audio_data)
+                await asyncio.sleep(0.01)
+            except Exception as e:
+                logger.error(f"Error in output audio processing: {e}")
+                break
 
     async def play_audio(self, audio_data):
         # Add audio data to the output queue
@@ -136,24 +161,36 @@ class AudioTrack(MediaStreamTrack):
         super().__init__()
         self.client = client
         self.audio_buffer = asyncio.Queue()
+        logger.debug("AudioTrack initialized")
 
     async def recv(self):
-        # Get audio frames from the buffer and play them
-        frame = await self.audio_buffer.get()
-        await self.client.play_audio(frame)
-        return frame
+        try:
+            frame = await self.audio_buffer.get()
+            logger.debug(f"Received {len(frame)} bytes of audio data")
+            await self.client.play_audio(frame)
+            return frame
+        except Exception as e:
+            logger.error(f"Error in recv: {e}")
+            raise
 
     async def send_audio(self, audio_data):
-        # Add audio frames to the buffer
-        await self.audio_buffer.put(audio_data)
+        try:
+            await self.audio_buffer.put(audio_data)
+            logger.debug(f"Sent {len(audio_data)} bytes to audio buffer")
+        except Exception as e:
+            logger.error(f"Error in send_audio: {e}")
+            raise
 
 
 if __name__ == "__main__":
     async def main():
-        load_dotenv()
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("Please create a .env file with OPENAI_API_KEY")
+        try:
+            logger.info("Starting application")
+            load_dotenv()
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                logger.error("OPENAI_API_KEY not found in .env file")
+                raise ValueError("Please create a .env file with OPENAI_API_KEY")
             
         client = RealtimeVoiceClient(api_key)
         try:
@@ -163,7 +200,7 @@ if __name__ == "__main__":
             while True:
                 await asyncio.sleep(1)
         finally:
-            # Clean up audio resources
+            logger.info("Cleaning up resources")
             if client.input_stream:
                 client.input_stream.stop_stream()
                 client.input_stream.close()
@@ -171,5 +208,9 @@ if __name__ == "__main__":
                 client.output_stream.stop_stream()
                 client.output_stream.close()
             client.audio.terminate()
+            logger.info("Resources cleaned up successfully")
+        except Exception as e:
+            logger.error(f"Application error: {e}")
+            raise
             
     asyncio.run(main())
