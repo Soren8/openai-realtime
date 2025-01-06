@@ -29,8 +29,8 @@ rtp_logger.setLevel(logging.WARNING)
 # Audio configuration
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 48000  # Default rate, will be adjusted based on device support
-CHUNK = 960   # Default for 48kHz, will be adjusted based on actual rate
+RATE = 16000  # Changed to 16kHz
+CHUNK = 320   # 20ms frame size at 16kHz
 
 def get_supported_sample_rates(audio):
     """Test a wide range of sample rates to find supported ones"""
@@ -129,9 +129,9 @@ class RealtimeVoiceClient:
         # Declare globals at the start of the method
         global RATE, CHUNK
         
-        # Use 48kHz as required by OpenAI API
-        RATE = 48000
-        CHUNK = int(RATE * 0.02)  # 20ms frame size
+        # Use 16kHz
+        RATE = 16000
+        CHUNK = int(RATE * 0.02)  # 20ms frame size (320 samples)
         
         logger.info(f"Using sample rate: {RATE} Hz with chunk size: {CHUNK}")
         
@@ -187,7 +187,7 @@ class RealtimeVoiceClient:
         wave_out = wave.open("debug_output.wav", "wb")
         wave_out.setnchannels(1)
         wave_out.setsampwidth(2)  # 16-bit
-        wave_out.setframerate(48000)
+        wave_out.setframerate(16000)  # Changed to 16kHz
 
         # Initialize sample rate conversion variables
         last_reported_rate = None
@@ -368,9 +368,9 @@ class AudioTrack(MediaStreamTrack):
         self.client = client
         self.audio_buffer = asyncio.Queue()
         logger.debug("AudioTrack initialized")
-        self.sample_rate = 48000  # Fixed to match API requirements
+        self.sample_rate = 16000  # Changed to 16kHz
         self.channels = CHANNELS
-        self.samples_per_channel = int(self.sample_rate * 0.02)  # 20ms frame size
+        self.samples_per_channel = int(self.sample_rate * 0.02)  # 20ms frame size (320 samples)
         self.timestamp = 0  # Initialize timestamp counter
 
     async def recv(self):
