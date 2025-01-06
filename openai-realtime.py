@@ -121,23 +121,28 @@ class RealtimeVoiceClient:
         while True:
             try:
                 frame = await track.recv()
-                # Log frame details
-                logger.debug(f"Received frame: format={frame.format.name}, "
-                            f"samples={frame.samples}, "
-                            f"sample_rate={frame.sample_rate}, "
-                            f"time_base={frame.time_base}")
                 
                 # Convert the frame to raw audio data
                 audio_data = frame.to_ndarray()
-                logger.debug(f"Audio array shape: {audio_data.shape}, dtype: {audio_data.dtype}")
                 
-                audio_bytes = audio_data.tobytes()
-                audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
-                max_amplitude = np.max(np.abs(audio_array))
-                logger.debug(f"Audio max amplitude: {max_amplitude}")
+                # Resample from 48kHz to 16kHz
+                original_samples = len(audio_data.flatten())
+                target_samples = int(original_samples * (RATE / frame.sample_rate))
+                resampled_data = np.interp(
+                    np.linspace(0, original_samples - 1, target_samples),
+                    np.arange(original_samples),
+                    audio_data.flatten()
+                )
                 
-                if len(audio_bytes) > 0 and max_amplitude > 1:
-                    await self.play_audio(audio_bytes)
+                # Convert to int16
+                resampled_data = (resampled_data * 32767).astype(np.int16)
+                
+                max_amplitude = np.max(np.abs(resampled_data))
+                if max_amplitude > 100:  # Only log when there's significant audio
+                    logger.debug(f"Resampled audio max amplitude: {max_amplitude}")
+                
+                if max_amplitude > 1:
+                    await self.play_audio(resampled_data.tobytes())
             except Exception as e:
                 logger.error(f"Error handling remote track: {e}")
                 break
@@ -147,13 +152,14 @@ class RealtimeVoiceClient:
         """Add audio data to the output queue"""
         try:
             if len(audio_data) > 0:
-                # Add debug logging for audio format
-                sample_format = np.frombuffer(audio_data, dtype=np.int16)
-                logger.debug(f"Audio format: {sample_format.dtype}, shape: {sample_format.shape}")
+                # Convert to numpy array to check values
+                audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                max_amplitude = np.max(np.abs(audio_array))
+                if max_amplitude > 100:  # Only log when there's significant audio
+                    logger.debug(f"Playing audio with max amplitude: {max_amplitude}")
                 
-                self.output_stream.write(audio_data)
-                if max(abs(b) for b in audio_data) > 1:
-                    logger.debug(f"Playing audio: {len(audio_data)} bytes")
+                if max_amplitude > 1:
+                    self.output_stream.write(audio_data)
             else:
                 logger.warning("Received empty audio data")
         except Exception as e:
@@ -207,6 +213,22 @@ class RealtimeVoiceClient:
         # Set up data channel
         self.data_channel = self.pc.createDataChannel("oai-events")
         self.data_channel.on("message", self._handle_message)
+        
+        # Wait for data channel to initialize
+        await asyncio.sleep(1)
+        if not self.data_channel or self.data_channel.readyState != "open":
+            logger.error("Data channel failed to open")
+            raise RuntimeError("Data channel not ready")
+        
+        # Send initial configuration
+        config_message = {
+            "type": "session.update",
+            "session": {
+                "modalities": ["audio", "text"]
+            }
+        }
+        self.data_channel.send(json.dumps(config_message))
+        logger.info("Sent initial configuration message")
         
         @self.data_channel.on("open")
         def on_open():
