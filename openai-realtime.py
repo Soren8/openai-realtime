@@ -17,6 +17,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Add these lines to suppress aiortc's verbose RTP logging
+aiortc_logger = logging.getLogger('aiortc')
+aiortc_logger.setLevel(logging.INFO)
+rtp_logger = logging.getLogger('aiortc.rtcrtpsender')
+rtp_logger.setLevel(logging.WARNING)
+rtp_logger = logging.getLogger('aiortc.rtcrtpreceiver')
+rtp_logger.setLevel(logging.WARNING)
+
 # Audio configuration
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
