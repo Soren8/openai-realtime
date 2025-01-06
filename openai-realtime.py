@@ -160,42 +160,22 @@ class RealtimeVoiceClient:
             try:
                 frame = await track.recv()
                 
-                # Log the sample rate of the incoming frame
-                logger.debug(f"Received frame with sample rate: {frame.sample_rate}")
+                # Log initial frame details
+                logger.debug(f"Received frame: sample_rate={frame.sample_rate}, format={frame.format.name}, samples={frame.samples}")
                 
                 # Convert the frame to raw audio data
                 audio_data = frame.to_ndarray()
+                logger.debug(f"Converted to numpy array: shape={audio_data.shape}, dtype={audio_data.dtype}")
                 
-                # Ensure the data is in the correct format (int16)
-                if audio_data.dtype != np.int16:
-                    audio_data = (audio_data * 32767).astype(np.int16)
+                # Play the audio directly without any conversion
+                raw_audio = audio_data.tobytes()
+                logger.debug(f"Audio data size in bytes: {len(raw_audio)}")
                 
-                # Ensure we're handling mono audio correctly
-                if len(audio_data.shape) > 1 and audio_data.shape[1] > 1:
-                    audio_data = audio_data[:, 0]  # Take only the first channel if stereo
-                
-                # Resample if necessary
-                if frame.sample_rate != RATE:
-                    logger.debug(f"Resampling from {frame.sample_rate} to {RATE}")
-                    # Calculate resampling ratio
-                    ratio = RATE / frame.sample_rate
-                    new_length = int(len(audio_data) * ratio)
-                    audio_data = np.interp(
-                        np.linspace(0, len(audio_data)-1, new_length),
-                        np.arange(len(audio_data)),
-                        audio_data
-                    ).astype(np.int16)
-                
-                # Log the max amplitude of the received audio
-                max_amplitude = np.max(np.abs(audio_data))
-                if max_amplitude > 100:  # Only log when there's significant audio
-                    logger.debug(f"Remote audio max amplitude: {max_amplitude}")
-                
-                if max_amplitude > 1:
-                    await self.play_audio(audio_data.tobytes())
+                await self.play_audio(raw_audio)
                     
             except Exception as e:
                 logger.error(f"Error handling remote track: {e}")
+                logger.exception("Full traceback:")
                 break
 
 
@@ -203,18 +183,13 @@ class RealtimeVoiceClient:
         """Add audio data to the output queue"""
         try:
             if len(audio_data) > 0:
-                # Convert to numpy array to check values
-                audio_array = np.frombuffer(audio_data, dtype=np.int16)
-                max_amplitude = np.max(np.abs(audio_array))
-                if max_amplitude > 100:  # Only log when there's significant audio
-                    logger.debug(f"Playing audio with max amplitude: {max_amplitude}")
-                
-                if max_amplitude > 1:
-                    self.output_stream.write(audio_data)
+                logger.debug(f"Writing {len(audio_data)} bytes to output stream")
+                self.output_stream.write(audio_data)
             else:
                 logger.warning("Received empty audio data")
         except Exception as e:
             logger.error(f"Error in play_audio: {e}")
+            logger.exception("Full traceback:")
             raise
 
 
