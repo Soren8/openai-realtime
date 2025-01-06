@@ -1,102 +1,88 @@
 import os
+import json
 from dotenv import load_dotenv
-from openai import OpenAI  # Updated import
-import sounddevice as sd
-import numpy as np
-import wave
-import threading
-import queue
+from aiortc import RTCPeerConnection, RTCSessionDescription
+import aiohttp
+import asyncio
 
 class RealtimeVoiceClient:
     def __init__(self, api_key):
-        self.client = OpenAI(api_key=api_key)  # Updated initialization
-        self.audio_queue = queue.Queue()
-        self.is_recording = False
-        self.sample_rate = 16000
-        self.channels = 1
-        self.dtype = 'int16'
+        self.api_key = api_key
+        self.pc = RTCPeerConnection()
+        self.data_channel = None
+        self.audio_stream = None
         
-    def start_recording(self):
-        self.is_recording = True
-        self.recording_thread = threading.Thread(target=self._record_audio)
-        self.recording_thread.start()
-        
-    def stop_recording(self):
-        self.is_recording = False
-        self.recording_thread.join()
-        
-    def _record_audio(self):
-        def callback(indata, frames, time, status):
-            if status:
-                print(status)
-            self.audio_queue.put(indata.copy())
-            
-        with sd.InputStream(samplerate=self.sample_rate,
-                          channels=self.channels,
-                          dtype=self.dtype,
-                          callback=callback):
-            while self.is_recording:
-                sd.sleep(100)
-                
-    def process_audio(self):
-        audio_data = []
-        while not self.audio_queue.empty():
-            audio_data.append(self.audio_queue.get())
-            
-        if audio_data:
-            audio_data = np.concatenate(audio_data)
-            return self._send_to_openai(audio_data)
-        return None
-        
-    def _send_to_openai(self, audio_data):
-        try:
-            # Convert numpy array to WAV format
-            with wave.open('temp.wav', 'wb') as wf:
-                wf.setnchannels(self.channels)
-                wf.setsampwidth(2)  # 2 bytes for int16
-                wf.setframerate(self.sample_rate)
-                wf.writeframes(audio_data.tobytes())
-                
-            with open('temp.wav', 'rb') as audio_file:
-                response = self.client.audio.transcriptions.create(
-                    file=audio_file,
-                    model="whisper-1"  # Use Whisper for transcription
-                )
-            os.remove('temp.wav')
-            return response.text  # Return the transcribed text
-        except Exception as e:
-            print(f"Error processing audio: {e}")
-            return None
+    async def connect(self):
+        # Create ephemeral token
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.openai.com/v1/realtime/sessions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "gpt-4o-mini-realtime-preview-2024-12-17",
+                    "voice": "verse"
+                }
+            ) as resp:
+                token_data = await resp.json()
+                ephemeral_key = token_data['client_secret']['value']
+
+        # Set up WebRTC connection
+        offer = await self.pc.createOffer()
+        await self.pc.setLocalDescription(offer)
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview-2024-12-17",
+                headers={
+                    "Authorization": f"Bearer {ephemeral_key}",
+                    "Content-Type": "application/sdp"
+                },
+                data=offer.sdp
+            ) as resp:
+                answer_sdp = await resp.text()
+                answer = RTCSessionDescription(sdp=answer_sdp, type="answer")
+                await self.pc.setRemoteDescription(answer)
+
+        # Set up data channel
+        self.data_channel = self.pc.createDataChannel("oai-events")
+        self.data_channel.on("message", self._handle_message)
+
+        # Set up audio
+        self.audio_stream = await self._setup_audio()
+
+    async def _setup_audio(self):
+        # Implement audio stream setup
+        pass
+
+    def _handle_message(self, message):
+        # Handle incoming messages
+        print("Received:", message)
+
+    async def send_message(self, text):
+        message = {
+            "type": "response.create",
+            "response": {
+                "modalities": ["text"],
+                "instructions": text
+            }
+        }
+        self.data_channel.send(json.dumps(message))
 
 if __name__ == "__main__":
-    # Load environment variables from .env file
-    load_dotenv()
-    
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("Please create a .env file with OPENAI_API_KEY")
+    async def main():
+        load_dotenv()
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Please create a .env file with OPENAI_API_KEY")
+            
+        client = RealtimeVoiceClient(api_key)
+        await client.connect()
         
-    client = RealtimeVoiceClient(api_key)
-    
-    try:
-        print("Starting recording... (Press Ctrl+C to stop)")
-        client.start_recording()
         while True:
-            try:
-                input()  # Wait for Enter key
-                break
-            except KeyboardInterrupt:
-                print("\nStopping recording...")
-                break
-    except Exception as e:
-        print(f"\nError: {e}")
-    finally:
-        client.stop_recording()
-        
-        print("Processing audio...")
-        result = client.process_audio()
-        if result:
-            print("\nTranscription Result:")
-            print(result)
-        else:
-            print("No transcription available")
+            text = input("Enter message: ")
+            await client.send_message(text)
+            
+    asyncio.run(main())

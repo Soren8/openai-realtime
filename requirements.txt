@@ -1,5 +1,4 @@
 openai>=1.0.0
-sounddevice>=0.4.6
-numpy>=1.24.0
-wave
+aiortc>=1.0.0
+aiohttp>=3.9.0
 python-dotenv>=1.0.0
