@@ -86,10 +86,15 @@ class RealtimeVoiceClient:
             output_info = self.audio.get_default_output_device_info()
             logger.debug(f"Using output device: {output_info['name']}")
             
+            # Ensure the output device supports 48 kHz
+            if RATE not in output_info.get('supportedSampleRates', []):
+                logger.error(f"Output device does not support {RATE} Hz sample rate")
+                raise RuntimeError(f"Output device does not support {RATE} Hz sample rate")
+            
             self.output_stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
-                rate=RATE,  # Now 48000
+                rate=RATE,  # Explicitly set to 48 kHz
                 output=True,
                 frames_per_buffer=CHUNK,  # Now 960
                 output_device_index=output_info['index']
@@ -135,6 +140,14 @@ class RealtimeVoiceClient:
         while True:
             try:
                 frame = await track.recv()
+                
+                # Log the sample rate of the incoming frame
+                logger.debug(f"Received frame with sample rate: {frame.sample_rate}")
+                
+                # Ensure the frame is at the correct sample rate (48 kHz)
+                if frame.sample_rate != RATE:
+                    logger.warning(f"Received frame with unexpected sample rate: {frame.sample_rate}")
+                    continue  # Skip frames with incorrect sample rate
                 
                 # Convert the frame to raw audio data
                 audio_data = frame.to_ndarray()
