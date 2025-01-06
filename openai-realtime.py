@@ -128,8 +128,8 @@ class RealtimeVoiceClient:
         # Declare globals at the start of the method
         global RATE, CHUNK
         
-        # Default to 44100 Hz
-        RATE = 44100
+        # Use 48kHz as required by OpenAI API
+        RATE = 48000
         CHUNK = int(RATE * 0.02)  # 20ms frame size
         
         logger.info(f"Using sample rate: {RATE} Hz with chunk size: {CHUNK}")
@@ -185,7 +185,6 @@ class RealtimeVoiceClient:
         
         # Initialize sample rate conversion variables
         last_reported_rate = None
-        conversion_factor = 1.0
         
         while True:
             try:
@@ -195,25 +194,14 @@ class RealtimeVoiceClient:
                 if frame.sample_rate != last_reported_rate:
                     logger.info(f"Received frame with sample rate: {frame.sample_rate} Hz")
                     last_reported_rate = frame.sample_rate
-                    conversion_factor = RATE / frame.sample_rate
-                    logger.info(f"Sample rate conversion factor: {conversion_factor}")
+                    
+                    if frame.sample_rate != RATE:
+                        logger.warning(f"Warning: Received audio at {frame.sample_rate} Hz but expected {RATE} Hz")
                 
                 # Convert the frame to raw audio data
                 audio_data = frame.to_ndarray()
                 
-                # If conversion is needed
-                if conversion_factor != 1.0:
-                    original_samples = audio_data.shape[0]
-                    target_samples = int(original_samples * conversion_factor)
-                    
-                    # Resample using numpy's interpolation
-                    x_old = np.linspace(0, 1, original_samples)
-                    x_new = np.linspace(0, 1, target_samples)
-                    audio_data = np.interp(x_new, x_old, audio_data)
-                    
-                    logger.debug(f"Resampled audio: {original_samples} -> {target_samples} samples")
-                
-                # Convert to int16 and ensure proper byte order
+                # Ensure proper data type conversion to int16
                 audio_data = audio_data.astype(np.int16)
                 
                 # Convert to bytes
@@ -358,9 +346,9 @@ class AudioTrack(MediaStreamTrack):
         self.client = client
         self.audio_buffer = asyncio.Queue()
         logger.debug("AudioTrack initialized")
-        self.sample_rate = RATE  # Now 48000
+        self.sample_rate = 48000  # Fixed to match API requirements
         self.channels = CHANNELS
-        self.samples_per_channel = CHUNK  # Now 960
+        self.samples_per_channel = int(self.sample_rate * 0.02)  # 20ms frame size
         self.timestamp = 0  # Initialize timestamp counter
 
     async def recv(self):
