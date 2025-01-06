@@ -93,6 +93,11 @@ class RealtimeVoiceClient:
             supported_rates = output_info.get('supportedSampleRates', [])
             logger.debug(f"Supported sample rates: {supported_rates}")
             
+            # If no supported rates are reported, use a default list
+            if not supported_rates:
+                logger.warning("No supported sample rates reported by device. Using default rates.")
+                supported_rates = [44100, 48000, 16000]  # Common sample rates
+            
             # Check if 48 kHz is supported
             if RATE not in supported_rates:
                 logger.warning(f"Output device does not support {RATE} Hz sample rate")
