@@ -44,6 +44,20 @@ class RealtimeVoiceClient:
         self.audio_track = None
         self.remote_audio_track = None
 
+    async def wait_for_data_channel(self, timeout=5):
+        """Wait for data channel to be ready with timeout"""
+        start_time = asyncio.get_event_loop().time()
+        while True:
+            if self.data_channel and self.data_channel.readyState == "open":
+                logger.info("Data channel is ready")
+                return True
+            
+            if asyncio.get_event_loop().time() - start_time > timeout:
+                logger.error(f"Data channel not ready after {timeout} seconds")
+                return False
+                
+            await asyncio.sleep(0.1)
+
     def _handle_message(self, message):
         try:
             event = json.loads(message)
@@ -181,92 +195,99 @@ class RealtimeVoiceClient:
         self.data_channel.send(json.dumps(message))
     async def connect(self):
         """Create ephemeral token and establish connection"""
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.openai.com/v1/realtime/sessions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "gpt-4o-mini-realtime-preview-2024-12-17",
-                    "voice": "verse"
-                }
-            ) as resp:
-                token_data = await resp.json()
-                ephemeral_key = token_data['client_secret']['value']
+        try:
+            # Get ephemeral token
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://api.openai.com/v1/realtime/sessions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "gpt-4o-mini-realtime-preview-2024-12-17",
+                        "voice": "verse"
+                    }
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Failed to get token: {error_text}")
+                        raise RuntimeError(f"Failed to get token: {resp.status}")
+                    token_data = await resp.json()
+                    ephemeral_key = token_data['client_secret']['value']
 
-        # Initialize audio streams
-        await self.start_audio_streams()
+            # Initialize audio streams
+            await self.start_audio_streams()
 
-        # Add audio track
-        self.audio_track = AudioTrack(self)
-        self.pc.addTrack(self.audio_track)
+            # Add audio track
+            self.audio_track = AudioTrack(self)
+            self.pc.addTrack(self.audio_track)
 
-        # Set up track handler
-        @self.pc.on("track")
-        def on_track(track):
-            logger.debug(f"Track received: {track.kind}")
-            if track.kind == "audio":
-                asyncio.create_task(self.handle_remote_track(track))
+            # Set up track handler
+            @self.pc.on("track")
+            def on_track(track):
+                logger.debug(f"Track received: {track.kind}")
+                if track.kind == "audio":
+                    asyncio.create_task(self.handle_remote_track(track))
 
-        # Set up data channel
-        self.data_channel = self.pc.createDataChannel("oai-events")
-        self.data_channel.on("message", self._handle_message)
-        
-        # Wait for data channel to initialize
-        await asyncio.sleep(1)
-        if not self.data_channel or self.data_channel.readyState != "open":
-            logger.error("Data channel failed to open")
-            raise RuntimeError("Data channel not ready")
-        
-        # Send initial configuration
-        config_message = {
-            "type": "session.update",
-            "session": {
-                "modalities": ["audio", "text"]
-            }
-        }
-        self.data_channel.send(json.dumps(config_message))
-        logger.info("Sent initial configuration message")
-        
-        @self.data_channel.on("open")
-        def on_open():
-            logger.info("Data channel opened - sending test message")
-            # Send a test message to verify the connection
-            test_message = {
-                "type": "session.update",
-                "session": {
-                    "modalities": ["audio", "text"]
-                }
-            }
-            logger.debug(f"Sending message: {test_message}")
-            self.data_channel.send(json.dumps(test_message))
+            # Set up data channel with event handlers
+            self.data_channel = self.pc.createDataChannel("oai-events")
             
-        @self.data_channel.on("close")
-        def on_close():
-            logger.debug("Data channel closed")
-            
-        @self.data_channel.on("error")
-        def on_error(error):
-            logger.error(f"Data channel error: {error}")
+            @self.data_channel.on("open")
+            def on_open():
+                logger.info("Data channel opened")
+                # Send initial configuration
+                config_message = {
+                    "type": "session.update",
+                    "session": {
+                        "modalities": ["audio", "text"]
+                    }
+                }
+                self.data_channel.send(json.dumps(config_message))
+                logger.info("Sent initial configuration message")
+                
+            @self.data_channel.on("close")
+            def on_close():
+                logger.warning("Data channel closed")
+                
+            @self.data_channel.on("error")
+            def on_error(error):
+                logger.error(f"Data channel error: {error}")
 
-        # Create offer
-        offer = await self.pc.createOffer()
-        await self.pc.setLocalDescription(offer)
+            self.data_channel.on("message", self._handle_message)
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview-2024-12-17",
-                headers={
-                    "Authorization": f"Bearer {ephemeral_key}",
-                    "Content-Type": "application/sdp"
-                },
-                data=offer.sdp
-            ) as resp:
-                answer_sdp = await resp.text()
-                answer = RTCSessionDescription(sdp=answer_sdp, type="answer")
-                await self.pc.setRemoteDescription(answer)
+            # Create and set local description
+            offer = await self.pc.createOffer()
+            await self.pc.setLocalDescription(offer)
+
+            # Send offer and get answer
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview-2024-12-17",
+                    headers={
+                        "Authorization": f"Bearer {ephemeral_key}",
+                        "Content-Type": "application/sdp"
+                    },
+                    data=offer.sdp
+                ) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"Failed to get answer: {error_text}")
+                        raise RuntimeError(f"Failed to get answer: {resp.status}")
+                    answer_sdp = await resp.text()
+                    answer = RTCSessionDescription(sdp=answer_sdp, type="answer")
+                    await self.pc.setRemoteDescription(answer)
+
+            # Wait for data channel to be ready
+            if not await self.wait_for_data_channel():
+                raise RuntimeError("Data channel failed to initialize")
+
+        except Exception as e:
+            logger.error(f"Connection failed: {str(e)}")
+            # Clean up on failure
+            if self.pc:
+                await self.pc.close()
+            raise
 
 class AudioTrack(MediaStreamTrack):
     kind = "audio"
@@ -314,6 +335,7 @@ class AudioTrack(MediaStreamTrack):
 
 if __name__ == "__main__":
     async def main():
+        client = None
         try:
             logger.info("Starting application")
             load_dotenv()
@@ -323,17 +345,17 @@ if __name__ == "__main__":
                 raise ValueError("Please create a .env file with OPENAI_API_KEY")
             
             client = RealtimeVoiceClient(api_key)
-            try:
-                await client.start_audio_streams()
-                await client.connect()
+            await client.connect()
+            
+            # Keep the connection alive while processing audio
+            while True:
+                await asyncio.sleep(1)
                 
-                # Keep the connection alive while processing audio
-                while True:
-                    await asyncio.sleep(1)
-            except Exception as e:
-                logger.error(f"Application error: {e}")
-                raise
-            finally:
+        except Exception as e:
+            logger.error(f"Application error: {e}")
+            raise
+        finally:
+            if client:
                 logger.info("Cleaning up resources")
                 if client.input_stream:
                     client.input_stream.stop_stream()
@@ -341,11 +363,10 @@ if __name__ == "__main__":
                 if client.output_stream:
                     client.output_stream.stop_stream()
                     client.output_stream.close()
-                client.audio.terminate()
+                if client.audio:
+                    client.audio.terminate()
+                if client.pc:
+                    await client.pc.close()
                 logger.info("Resources cleaned up successfully")
-            
-        except Exception as e:
-            logger.error(f"Fatal error: {e}")
-            raise
 
     asyncio.run(main())
