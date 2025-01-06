@@ -59,7 +59,7 @@ class RealtimeVoiceClient:
                 input=True,
                 frames_per_buffer=CHUNK
             )
-            logger.debug("Input stream opened successfully")
+            logger.debug(f"Input stream opened successfully: {self.input_stream.is_active()}")
 
             self.output_stream = self.audio.open(
                 format=FORMAT,
@@ -68,7 +68,7 @@ class RealtimeVoiceClient:
                 output=True,
                 frames_per_buffer=CHUNK
             )
-            logger.debug("Output stream opened successfully")
+            logger.debug(f"Output stream opened successfully: {self.output_stream.is_active()}")
 
             asyncio.create_task(self.process_input_audio())
             asyncio.create_task(self.process_output_audio())
@@ -107,7 +107,6 @@ class RealtimeVoiceClient:
             try:
                 if not self.audio_queue.empty():
                     audio_data = await self.audio_queue.get()
-                    logger.debug(f"Playing {len(audio_data)} bytes of audio data")
                     self.output_stream.write(audio_data)
                 await asyncio.sleep(0.01)
             except Exception as e:
@@ -116,7 +115,13 @@ class RealtimeVoiceClient:
 
     async def play_audio(self, audio_data):
         """Add audio data to the output queue"""
-        await self.audio_queue.put(audio_data)
+        try:
+            # Add debug logging to verify audio data
+            logger.debug(f"Audio data received: {len(audio_data)} bytes, first 10 bytes: {audio_data[:10].hex()}")
+            await self.audio_queue.put(audio_data)
+        except Exception as e:
+            logger.error(f"Error in play_audio: {e}")
+            raise
 
     async def send_message(self, text):
         if not self.data_channel:
