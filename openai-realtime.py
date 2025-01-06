@@ -195,22 +195,22 @@ if __name__ == "__main__":
             client = RealtimeVoiceClient(api_key)
             try:
                 await client.connect()
-            
-            # Keep the connection alive while processing audio
-            while True:
-                await asyncio.sleep(1)
-        finally:
-            logger.info("Cleaning up resources")
-            if client.input_stream:
-                client.input_stream.stop_stream()
-                client.input_stream.close()
-            if client.output_stream:
-                client.output_stream.stop_stream()
-                client.output_stream.close()
-            client.audio.terminate()
-            logger.info("Resources cleaned up successfully")
-        except Exception as e:
-            logger.error(f"Application error: {e}")
-            raise
+                
+                # Keep the connection alive while processing audio
+                while True:
+                    await asyncio.sleep(1)
+            except Exception as e:
+                logger.error(f"Application error: {e}")
+                raise
+            finally:
+                logger.info("Cleaning up resources")
+                if client.input_stream:
+                    client.input_stream.stop_stream()
+                    client.input_stream.close()
+                if client.output_stream:
+                    client.output_stream.stop_stream()
+                    client.output_stream.close()
+                client.audio.terminate()
+                logger.info("Resources cleaned up successfully")
             
     asyncio.run(main())
