@@ -43,20 +43,20 @@ class RealtimeVoiceClient:
         logger.debug("Starting audio streams")
         try:
             self.input_stream = self.audio.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=RATE,
-            input=True,
-            frames_per_buffer=CHUNK
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                input=True,
+                frames_per_buffer=CHUNK
             )
             logger.debug("Input stream opened successfully")
 
             self.output_stream = self.audio.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=RATE,
-            output=True,
-            frames_per_buffer=CHUNK
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                output=True,
+                frames_per_buffer=CHUNK
             )
             logger.debug("Output stream opened successfully")
 
@@ -94,9 +94,9 @@ class RealtimeVoiceClient:
                 break
 
     async def play_audio(self, audio_data):
-        # Add audio data to the output queue
+        """Add audio data to the output queue"""
         await self.audio_queue.put(audio_data)
-        
+
     async def send_message(self, text):
         if not self.data_channel:
             raise RuntimeError("Data channel not initialized")
@@ -110,7 +110,7 @@ class RealtimeVoiceClient:
         }
         self.data_channel.send(json.dumps(message))
     async def connect(self):
-        # Create ephemeral token
+        """Create ephemeral token and establish connection"""
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 "https://api.openai.com/v1/realtime/sessions",
@@ -213,4 +213,8 @@ if __name__ == "__main__":
                 client.audio.terminate()
                 logger.info("Resources cleaned up successfully")
             
-        asyncio.run(main())
+        except Exception as e:
+            logger.error(f"Fatal error: {e}")
+            raise
+
+    asyncio.run(main())
