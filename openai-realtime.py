@@ -45,8 +45,25 @@ class RealtimeVoiceClient:
         self.remote_audio_track = None
 
     def _handle_message(self, message):
-        # Handle incoming messages
-        print("Received:", message)
+        try:
+            event = json.loads(message)
+            event_type = event.get('type')
+            
+            if event_type == 'response.audio_transcript.delta':
+                logger.info(f"Transcript: {event.get('delta', {}).get('text', '')}")
+            elif event_type == 'response.created':
+                logger.info("Response started")
+            elif event_type == 'response.done':
+                logger.info("Response completed")
+            elif event_type == 'error':
+                logger.error(f"API Error: {event.get('message', '')}")
+            else:
+                logger.debug(f"Received event: {event_type}")
+                
+        except json.JSONDecodeError:
+            logger.error(f"Failed to parse message: {message}")
+        except Exception as e:
+            logger.error(f"Error handling message: {e}")
 
     async def start_audio_streams(self):
         logger.debug("Starting audio streams")
@@ -85,6 +102,12 @@ class RealtimeVoiceClient:
         while True:
             try:
                 data = self.input_stream.read(CHUNK, exception_on_overflow=False)
+                # Check if we're getting non-silent audio input
+                audio_array = np.frombuffer(data, dtype=np.int16)
+                max_input_amplitude = np.max(np.abs(audio_array))
+                if max_input_amplitude > 100:  # Threshold to avoid logging silence
+                    logger.debug(f"Input audio max amplitude: {max_input_amplitude}")
+                
                 if self.audio_track:
                     await self.audio_track.send_audio(data)
                 await asyncio.sleep(0.01)
@@ -180,7 +203,14 @@ class RealtimeVoiceClient:
         
         @self.data_channel.on("open")
         def on_open():
-            logger.debug("Data channel opened")
+            logger.info("Data channel opened - sending test message")
+            # Send a test message to verify the connection
+            self.data_channel.send(json.dumps({
+                "type": "session.update",
+                "session": {
+                    "modalities": ["audio", "text"]
+                }
+            }))
             
         @self.data_channel.on("close")
         def on_close():
