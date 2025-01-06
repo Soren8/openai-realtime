@@ -83,7 +83,7 @@ class RealtimeVoiceClient:
             try:
                 data = self.input_stream.read(CHUNK, exception_on_overflow=False)
                 if self.audio_track:
-                    logger.debug(f"Sending {len(data)} bytes of audio data")
+                    logger.info(f"Sending {len(data)} bytes of audio data")
                     await self.audio_track.send_audio(data)
                 await asyncio.sleep(0.01)
             except Exception as e:
@@ -217,7 +217,7 @@ class AudioTrack(MediaStreamTrack):
             self.timestamp += self.samples_per_channel
             
             await self.audio_buffer.put(audio_frame)
-            logger.debug(f"Sent {len(audio_data)} bytes to audio buffer")
+            logger.info(f"Sent {len(audio_data)} bytes to audio buffer")
         except Exception as e:
             logger.error(f"Error in send_audio: {e}")
             raise
