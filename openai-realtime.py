@@ -3,6 +3,7 @@ import json
 import logging
 import pyaudio
 import numpy as np
+import wave
 from dotenv import load_dotenv
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import aiohttp
@@ -180,21 +181,26 @@ class RealtimeVoiceClient:
                 break
 
     async def handle_remote_track(self, track):
-        logger.debug(f"Remote audio track received with format: {track.kind}, {track.readyState}")
-        self.remote_audio_track = track
-        
+        logger.debug("Remote audio track received...")
+
+        # Create debug WAV file
+        wave_out = wave.open("debug_output.wav", "wb")
+        wave_out.setnchannels(1)
+        wave_out.setsampwidth(2)  # 16-bit
+        wave_out.setframerate(48000)
+
         # Initialize sample rate conversion variables
         last_reported_rate = None
         
         while True:
             try:
                 frame = await track.recv()
-            
+                
                 # Add detailed frame information logging
                 logger.debug(f"frame.samples = {frame.samples}")
                 logger.debug(f"frame.sample_rate = {frame.sample_rate}")
                 logger.debug(f"frame.channels = {frame.layout.channels}")
-            
+                
                 # Always log the received frame's sample rate
                 current_rate = frame.sample_rate
                 logger.debug(f"Received frame with sample rate: {current_rate} Hz")
@@ -216,12 +222,19 @@ class RealtimeVoiceClient:
                 # Convert to bytes
                 raw_audio = audio_data.tobytes()
                 
+                # Write to debug WAV file
+                wave_out.writeframes(raw_audio)
+                
+                # Play the audio
                 await self.play_audio(raw_audio)
                     
             except Exception as e:
                 logger.error(f"Error handling remote track: {e}")
                 logger.exception("Full traceback:")
                 break
+                
+        # Close the WAV file when done
+        wave_out.close()
 
 
     async def play_audio(self, audio_data):
