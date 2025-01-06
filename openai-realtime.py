@@ -52,6 +52,20 @@ class RealtimeVoiceClient:
     async def start_audio_streams(self):
         logger.debug("Starting audio streams")
         try:
+            # Verify output device
+            output_info = self.audio.get_default_output_device_info()
+            logger.debug(f"Using output device: {output_info['name']}")
+            
+            self.output_stream = self.audio.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=RATE,
+                output=True,
+                frames_per_buffer=CHUNK,
+                output_device_index=output_info['index']
+            )
+            logger.debug(f"Output stream opened successfully: {self.output_stream.is_active()}")
+
             self.input_stream = self.audio.open(
                 format=FORMAT,
                 channels=CHANNELS,
@@ -60,15 +74,6 @@ class RealtimeVoiceClient:
                 frames_per_buffer=CHUNK
             )
             logger.debug(f"Input stream opened successfully: {self.input_stream.is_active()}")
-
-            self.output_stream = self.audio.open(
-                format=FORMAT,
-                channels=CHANNELS,
-                rate=RATE,
-                output=True,
-                frames_per_buffer=CHUNK
-            )
-            logger.debug(f"Output stream opened successfully: {self.output_stream.is_active()}")
 
             asyncio.create_task(self.process_input_audio())
             asyncio.create_task(self.process_output_audio())
@@ -121,6 +126,19 @@ class RealtimeVoiceClient:
             await self.audio_queue.put(audio_data)
         except Exception as e:
             logger.error(f"Error in play_audio: {e}")
+            raise
+
+    async def test_output(self):
+        """Play a test tone to verify output works"""
+        try:
+            logger.debug("Playing test tone")
+            duration = 1.0  # seconds
+            frequency = 440.0  # Hz (A4 note)
+            samples = (np.sin(2 * np.pi * np.arange(RATE * duration) * frequency / RATE)).astype(np.float32)
+            self.output_stream.write(samples.tobytes())
+            logger.debug("Test tone completed")
+        except Exception as e:
+            logger.error(f"Error playing test tone: {e}")
             raise
 
     async def send_message(self, text):
@@ -238,6 +256,8 @@ if __name__ == "__main__":
             
             client = RealtimeVoiceClient(api_key)
             try:
+                await client.start_audio_streams()
+                await client.test_output()  # Add this line
                 await client.connect()
                 
                 # Keep the connection alive while processing audio
