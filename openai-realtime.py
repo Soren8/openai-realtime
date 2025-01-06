@@ -29,7 +29,11 @@ class RealtimeVoiceClient:
                 token_data = await resp.json()
                 ephemeral_key = token_data['client_secret']['value']
 
-        # Set up WebRTC connection
+        # Set up data channel FIRST
+        self.data_channel = self.pc.createDataChannel("oai-events")
+        self.data_channel.on("message", self._handle_message)
+
+        # Now create the offer
         offer = await self.pc.createOffer()
         await self.pc.setLocalDescription(offer)
 
@@ -46,11 +50,7 @@ class RealtimeVoiceClient:
                 answer = RTCSessionDescription(sdp=answer_sdp, type="answer")
                 await self.pc.setRemoteDescription(answer)
 
-        # Set up data channel
-        self.data_channel = self.pc.createDataChannel("oai-events")
-        self.data_channel.on("message", self._handle_message)
-
-        # Set up audio
+        # Set up audio (if needed)
         self.audio_stream = await self._setup_audio()
 
     async def _setup_audio(self):
