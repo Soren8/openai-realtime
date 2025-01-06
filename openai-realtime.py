@@ -1,7 +1,7 @@
 import os
 import json
 from dotenv import load_dotenv
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import aiohttp
 import asyncio
 
@@ -50,11 +50,19 @@ class RealtimeVoiceClient:
                 answer = RTCSessionDescription(sdp=answer_sdp, type="answer")
                 await self.pc.setRemoteDescription(answer)
 
-        # Set up audio (if needed)
-        self.audio_stream = await self._setup_audio()
+        # Add audio track
+        audio_track = AudioTrack()
+        self.pc.addTrack(audio_track)
 
-    async def _setup_audio(self):
-        # Implement audio stream setup
+class AudioTrack(MediaStreamTrack):
+    kind = "audio"
+
+    def __init__(self):
+        super().__init__()
+        # Initialize audio source here
+
+    async def recv(self):
+        # Implement audio frame reception
         pass
 
     def _handle_message(self, message):
