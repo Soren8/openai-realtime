@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import pyaudio
+import numpy as np
 from dotenv import load_dotenv
 from aiortc import RTCPeerConnection, RTCSessionDescription, MediaStreamTrack
 import aiohttp
@@ -92,17 +93,21 @@ class RealtimeVoiceClient:
                 break
 
     async def handle_remote_track(self, track):
-        logger.debug("Remote audio track received")
+        logger.debug(f"Remote audio track received with format: {track.kind}, {track.readyState}")
         self.remote_audio_track = track
         while True:
             try:
                 frame = await track.recv()
                 # Convert the frame to raw audio data
                 audio_data = frame.to_ndarray().tobytes()
-                # Only log if we have significant audio data
-                if len(audio_data) > 0 and max(abs(b) for b in audio_data) > 1:
+                # Add debug logging to check actual audio values
+                audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                max_amplitude = np.max(np.abs(audio_array))
+                logger.debug(f"Audio max amplitude: {max_amplitude}")
+                
+                if len(audio_data) > 0 and max_amplitude > 1:
                     logger.debug(f"Received audio frame: {len(audio_data)} bytes")
-                await self.play_audio(audio_data)
+                    await self.play_audio(audio_data)
             except Exception as e:
                 logger.error(f"Error handling remote track: {e}")
                 break
@@ -111,11 +116,13 @@ class RealtimeVoiceClient:
     async def play_audio(self, audio_data):
         """Add audio data to the output queue"""
         try:
-            # Only log if we have valid audio data
             if len(audio_data) > 0:
+                # Add debug logging for audio format
+                sample_format = np.frombuffer(audio_data, dtype=np.int16)
+                logger.debug(f"Audio format: {sample_format.dtype}, shape: {sample_format.shape}")
+                
                 self.output_stream.write(audio_data)
-                # Only log if we have significant audio data
-                if max(abs(b) for b in audio_data) > 1:  # Check for non-silent audio
+                if max(abs(b) for b in audio_data) > 1:
                     logger.debug(f"Playing audio: {len(audio_data)} bytes")
             else:
                 logger.warning("Received empty audio data")
@@ -170,6 +177,18 @@ class RealtimeVoiceClient:
         # Set up data channel
         self.data_channel = self.pc.createDataChannel("oai-events")
         self.data_channel.on("message", self._handle_message)
+        
+        @self.data_channel.on("open")
+        def on_open():
+            logger.debug("Data channel opened")
+            
+        @self.data_channel.on("close")
+        def on_close():
+            logger.debug("Data channel closed")
+            
+        @self.data_channel.on("error")
+        def on_error(error):
+            logger.error(f"Data channel error: {error}")
 
         # Create offer
         offer = await self.pc.createOffer()
