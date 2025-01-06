@@ -75,11 +75,16 @@ class AudioTrack(MediaStreamTrack):
 
     def __init__(self):
         super().__init__()
-        # Initialize audio source here
+        self.audio_buffer = asyncio.Queue()
 
     async def recv(self):
-        # Implement audio frame reception
-        pass
+        # Get audio frames from the buffer
+        frame = await self.audio_buffer.get()
+        return frame
+
+    async def send_audio(self, audio_data):
+        # Add audio frames to the buffer
+        await self.audio_buffer.put(audio_data)
 
 
 if __name__ == "__main__":
@@ -92,8 +97,8 @@ if __name__ == "__main__":
         client = RealtimeVoiceClient(api_key)
         await client.connect()
         
+        # Keep the connection alive while processing audio
         while True:
-            text = input("Enter message: ")
-            await client.send_message(text)
+            await asyncio.sleep(1)  # Keep the event loop running
             
     asyncio.run(main())
